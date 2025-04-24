@@ -70,11 +70,6 @@ namespace LW.Network
                                 if (CoreProtocolMessage.processHelloMessageV6(endpoint, reader))
                                 {
                                     char node_type = endpoint.presenceAddress.type;
-                                    if (node_type != 'M' && node_type != 'H')
-                                    {
-                                        CoreProtocolMessage.sendBye(endpoint, ProtocolByeCode.expectingMaster, string.Format("Expecting master node."), "", true);
-                                        return;
-                                    }
 
                                     ulong last_block_num = reader.ReadIxiVarUInt();
 
@@ -89,13 +84,27 @@ namespace LW.Network
                                     endpoint.helloReceived = true;
                                     NetworkClientManager.recalculateLocalTimeDifference();
 
+                                    if (endpoint.presenceAddress.type == 'R')
+                                    {
+                                        string[] connected_servers = StreamClientManager.getConnectedClients(true);
+                                        if (connected_servers.Count() == 1 || !connected_servers.Contains(StreamClientManager.primaryS2Address))
+                                        {
+                                            // TODO set the primary s2 host more efficiently, perhaps allow for multiple s2 primary hosts
+                                            StreamClientManager.primaryS2Address = endpoint.getFullAddress(true);
+                                            // TODO TODO do not set if directly connectable
+                                            IxianHandler.publicIP = endpoint.address;
+                                            IxianHandler.publicPort = endpoint.incomingPort;
+                                            PresenceList.forceSendKeepAlive = true;
+                                            Logging.info("Forcing KA from networkprotocol");
+                                        }
+                                    }
+
                                     if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
                                     {
                                         Node.setNetworkBlock(last_block_num, block_checksum, block_version);
 
                                         // Get random presences
-                                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
-                                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
+                                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'R' });
 
                                         CoreProtocolMessage.subscribeToEvents(endpoint);
                                     }
@@ -119,7 +128,7 @@ namespace LW.Network
                                     // Retrieve the latest balance
                                     IxiNumber ixi_balance = new IxiNumber(new BigInteger(balance_bytes));
 
-                                    foreach (Balance balance in Node.balances)
+                                    foreach (Balance balance in IxianHandler.balances)
                                     {
                                         if (address.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
                                         {
