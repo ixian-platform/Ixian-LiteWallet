@@ -92,6 +92,10 @@ namespace IxianLiteWallet
                 case "stress":
                     handleStress(line);
                     break;
+
+                case "debug":
+                    handleDebug(line);
+                    break;
             }
         }
 
@@ -112,7 +116,7 @@ namespace IxianLiteWallet
             Console.WriteLine("\tsend [address] [amount]\t-sends IxiCash to the specified address");
             Console.WriteLine("\tsendP2p [address] [amount]\t-sends IxiCash to the specified address");
             Console.WriteLine("\tsendfrom [fromaddress] [toaddress] [amount] -sends IxiCash from a specific address to the specified address");
-            // change password
+            //Console.WriteLine("\tdebug [verbosity]\t\t-enables logging to console");
             Console.WriteLine("");
         }
 
@@ -123,14 +127,14 @@ namespace IxianLiteWallet
             IxiNumber total_balance = 0;
             foreach (Address addr in address_list)
             {
-                Node.getBalance(addr.addressWithChecksum);
+                Node.getBalance(addr.addressNoChecksum);
 
                 IxiNumber address_balance = 0;
                 string verified = "";
 
                 foreach (Balance balance in IxianHandler.balances)
                 {
-                    if (balance.address != null && balance.address.addressWithChecksum.SequenceEqual(addr.addressWithChecksum))
+                    if (balance.address != null && balance.address.addressNoChecksum.SequenceEqual(addr.addressNoChecksum))
                     {
                         address_balance = balance.balance;
 
@@ -433,6 +437,28 @@ namespace IxianLiteWallet
                }
                stressRunning = false;
            }).Start();
+        }
+
+        void handleDebug(string line)
+        {
+            string[] split = line.Split(new string[] { " " }, StringSplitOptions.None);
+            if (split.Count() < 2)
+            {
+                Console.WriteLine("Incorrect parameters for verify. Should be at least the verbosity.\n");
+                return;
+            }
+
+            int verbosity = int.Parse(split[1]);
+            if (verbosity == 0)
+            {
+                Logging.verbosity = verbosity;
+                Logging.consoleOutput = false;
+            }
+            else
+            {
+                Logging.verbosity = verbosity;
+                Logging.consoleOutput = true;
+            }
         }
     }
 }

@@ -19,6 +19,9 @@ namespace LW.Meta
 
         public static byte[] checksumLock = null;
 
+        public static int maxRelaySectorNodesToRequest = 6;
+        public static int maxRelaySectorNodesToConnectTo = 3;
+
         private static string outputHelp()
         {
             Program.noStart = true;

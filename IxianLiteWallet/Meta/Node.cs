@@ -1,20 +1,23 @@
 ﻿using IXICore;
+using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
-using IXICore.Streaming;
 using IXICore.Utils;
 using LW.Network;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using static IXICore.Transaction;
 
 namespace LW.Meta
 {
     class Node : IxianNode
     {
+        private static Thread mainLoopThread;
+
         public static bool running = false;
 
         public static TransactionInclusion tiv = null;
@@ -45,7 +48,7 @@ namespace LW.Meta
                 IxianLiteWallet.Program.running = false;
                 return;
             }
-            
+
             Logging.consoleOutput = false;
 
             Console.WriteLine("Connecting to Ixian network...");
@@ -53,9 +56,38 @@ namespace LW.Meta
             PeerStorage.init("");
 
             // Init TIV
-            tiv = new TransactionInclusion();
+            tiv = new TransactionInclusion(new LWTransactionInclusionCallbacks());
+
+            mainLoopThread = new Thread(mainLoop);
+            mainLoopThread.Name = "Main_Loop_Thread";
+            mainLoopThread.Start();
         }
 
+
+        static void mainLoop()
+        {
+            while (running)
+            {
+                try
+                {
+                    using (MemoryStream mw = new MemoryStream())
+                    {
+                        using (BinaryWriter writer = new BinaryWriter(mw))
+                        {
+                            writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                            writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
+                            writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
+                            NetworkClientManager.broadcastData(['M', 'H', 'R'], ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Logging.error("Exception occured in mainLoop: " + e);
+                }
+                Thread.Sleep(30000);
+            }
+        }
         private bool initWallet()
         {
             WalletStorage walletStorage = new WalletStorage(Config.walletFile);
@@ -152,7 +184,15 @@ namespace LW.Meta
 
         static public void stop()
         {
+            running = false;
             IxianHandler.forceShutdown = true;
+
+            if (mainLoopThread != null)
+            {
+                mainLoopThread.Interrupt();
+                mainLoopThread.Join();
+                mainLoopThread = null;
+            }
 
             // Stop TIV
             tiv.stop();
@@ -167,18 +207,21 @@ namespace LW.Meta
 
         public void start()
         {
-            PresenceList.init(IxianHandler.publicIP, 0, 'C');
+            PresenceList.init(IxianHandler.publicIP, 0, 'C', CoreConfig.clientKeepAliveInterval);
 
             // Start the network queue
             NetworkQueue.start();
 
+            InventoryCache.init(new InventoryCacheClient(tiv));
+
+            RelaySectors.init(CoreConfig.relaySectorLevels, null);
+
             // Start the network client manager
-            networkClientManagerStatic = new NetworkClientManagerStatic();
-            networkClientManagerStatic.setClientsToConnectTo(PeerStorage.getRandomMasterNodeAddress);
+            networkClientManagerStatic = new NetworkClientManagerStatic(Config.maxRelaySectorNodesToConnectTo);
 
             NetworkClientManager.init(networkClientManagerStatic);
-            NetworkClientManager.start(2);            
-            
+            NetworkClientManager.start(2);
+
             // Start the stream client manager
             StreamClientManager.start();
 
@@ -236,11 +279,11 @@ namespace LW.Meta
 
         static public void sendTransactionFrom(Address fromAddress, Address toAddress, IxiNumber amount)
         {
-            getBalance(fromAddress.addressWithChecksum);
+            getBalance(fromAddress.addressNoChecksum);
 
             IxiNumber fee = ConsensusConfig.forceTransactionPrice;
             SortedDictionary<Address, ToEntry> to_list = new(new AddressComparer());
-            Balance address_balance = IxianHandler.balances.FirstOrDefault(addr => addr.address.addressWithChecksum.SequenceEqual(fromAddress.addressWithChecksum));
+            Balance address_balance = IxianHandler.balances.FirstOrDefault(addr => addr.address.addressNoChecksum.SequenceEqual(fromAddress.addressNoChecksum));
             Address pubKey = new(IxianHandler.getWalletStorage().getPrimaryPublicKey());
 
             if (!IxianHandler.getWalletStorage().isMyAddress(fromAddress))
@@ -260,13 +303,22 @@ namespace LW.Meta
             IxiNumber relayFee = 0;
             foreach (Address relayNodeAddress in relayNodeAddresses)
             {
-                to_list.AddOrReplace(relayNodeAddress, new ToEntry(Transaction.getExpectedVersion(IxianHandler.getLastBlockVersion()), fee));
-                relayFee += fee;
+                var tmpFee = fee > ConsensusConfig.transactionDustLimit ? fee : ConsensusConfig.transactionDustLimit;
+                to_list.AddOrReplace(relayNodeAddress, new ToEntry(Transaction.getExpectedVersion(IxianHandler.getLastBlockVersion()), tmpFee));
+                relayFee += tmpFee;
             }
 
 
             // Prepare transaction to calculate fee
             Transaction transaction = new((int)Transaction.Type.Normal, fee, to_list, from_list, pubKey, IxianHandler.getHighestKnownNetworkBlockHeight());
+
+            relayFee = 0;
+            foreach (Address relayNodeAddress in relayNodeAddresses)
+            {
+                var tmpFee = transaction.fee > ConsensusConfig.transactionDustLimit ? transaction.fee : ConsensusConfig.transactionDustLimit;
+                to_list[relayNodeAddress].amount = tmpFee;
+                relayFee += tmpFee;
+            }
 
             byte[] first_address = from_list.Keys.First();
             from_list[first_address] = from_list[first_address] + relayFee + transaction.fee;
@@ -300,35 +352,6 @@ namespace LW.Meta
             networkBlockHeight = block_height;
             networkBlockChecksum = block_checksum;
             networkBlockVersion = block_version;
-        }
-
-        public override void receivedTransactionInclusionVerificationResponse(byte[] txid, bool verified)
-        {
-            string status = "NOT VERIFIED";
-            if (verified)
-            {
-                status = "VERIFIED";
-                PendingTransactions.remove(txid);
-            }
-            Console.WriteLine("Transaction {0} is {1}\n", Transaction.getTxIdString(txid), status);
-        }
-
-        public override void receivedBlockHeader(Block block_header, bool verified)
-        {
-            foreach (Balance balance in IxianHandler.balances)
-            {
-                if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(block_header.blockChecksum))
-                {
-                    balance.verified = true;
-                }
-            }
-
-            if(block_header.blockNum >= networkBlockHeight)
-            {
-                IxianHandler.status = NodeStatus.ready;
-                setNetworkBlock(block_header.blockNum, block_header.blockChecksum, block_header.version);
-            }
-            processPendingTransactions();
         }
 
         public override ulong getLastBlockHeight()
@@ -414,7 +437,7 @@ namespace LW.Meta
             lock (PendingTransactions.pendingTransactions)
             {
                 long cur_time = Clock.getTimestamp();
-                List<PendingTransaction> tmp_pending_transactions = new List<PendingTransaction>(PendingTransactions.pendingTransactions);
+                List<PendingTransaction> tmp_pending_transactions = new(PendingTransactions.pendingTransactions);
                 int idx = 0;
                 foreach (var entry in tmp_pending_transactions)
                 {
@@ -437,12 +460,14 @@ namespace LW.Meta
 
                     if (cur_time - tx_time > 40) // if the transaction is pending for over 40 seconds, resend
                     {
-                        CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, t.getBytes(true), null);
+                        foreach (var address in entry.relayNodeAddresses)
+                        {
+                            NetworkClientManager.sendToClient(address, ProtocolMessageCode.transactionData2, t.getBytes(true, true), null);
+                        }
                         entry.addedTimestamp = cur_time;
-                        entry.confirmedNodeList.Clear();
                     }
 
-                    if (entry.confirmedNodeList.Count() > 3) // already received 3+ feedback
+                    if (entry.confirmedNodeList.Count() > 1) // already received 3+ feedback
                     {
                         continue;
                     }
@@ -468,7 +493,6 @@ namespace LW.Meta
             return ConsensusConfig.minBlockSignerPowDifficulty;
         }
 
-
         public override byte[] getBlockHash(ulong blockNum)
         {
             Block b = getBlockHeader(blockNum);
@@ -481,40 +505,6 @@ namespace LW.Meta
         }
 
         public override RegisteredNameRecord getRegName(byte[] name, bool useAbsoluteId)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override bool receivedNewTransaction(Transaction tx)
-        {
-            return tiv.receivedNewTransaction(tx);
-        }
-
-        public override FriendMessage addMessageWithType(byte[] id, FriendMessageType type, Address wallet_address, int channel, string message, bool local_sender = false, Address sender_address = null, long timestamp = 0, bool fire_local_notification = true, int payable_data_len = 0)
-        {
-            return FriendList.addMessageWithType(id, type, wallet_address, channel, message, local_sender, sender_address, timestamp, fire_local_notification, payable_data_len);
-        }
-
-        public override byte[] resizeImage(byte[] imageData, int width, int height, int quality)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void resubscribeEvents()
-        {
-        }
-
-        public override void receiveStreamData(byte[] data, RemoteEndpoint endpoint, bool fireLocalNotification)
-        {
-            CoreStreamProcessor.receiveData(data, endpoint, fireLocalNotification);
-        }
-
-        public override long getTimeSinceLastBlock()
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void triggerSignerPowSolutionFound()
         {
             throw new NotImplementedException();
         }
