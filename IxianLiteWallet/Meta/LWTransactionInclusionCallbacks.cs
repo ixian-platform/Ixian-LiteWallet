@@ -31,7 +31,6 @@ namespace LW.Meta
             if (block_header.blockNum >= IxianHandler.getHighestKnownNetworkBlockHeight())
             {
                 IxianHandler.status = NodeStatus.ready;
-                Node.setNetworkBlock(block_header.blockNum, block_header.blockChecksum, block_header.version);
             }
             Node.processPendingTransactions();
         }

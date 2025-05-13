@@ -104,8 +104,6 @@ namespace LW.Network
 
                                     if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
                                     {
-                                        Node.setNetworkBlock(last_block_num, block_checksum, block_version);
-
                                         // Get random presences
                                         endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'R' });
 
@@ -131,12 +129,14 @@ namespace LW.Network
                                     // Retrieve the latest balance
                                     IxiNumber ixi_balance = new IxiNumber(new BigInteger(balance_bytes));
 
+                                    // Retrieve the blockheight for the balance
+                                    ulong block_height = reader.ReadIxiVarUInt();
+
                                     foreach (Balance balance in IxianHandler.balances)
                                     {
                                         if (address.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
                                         {
-                                            // Retrieve the blockheight for the balance
-                                            ulong block_height = reader.ReadIxiVarUInt();
+
 
                                             if (block_height > balance.blockHeight && (balance.balance != ixi_balance || balance.blockHeight == 0))
                                             {
@@ -148,6 +148,8 @@ namespace LW.Network
                                                 balance.blockChecksum = block_checksum;
                                                 balance.verified = false;
                                             }
+
+                                            balance.lastUpdate = Clock.getTimestamp();
 
                                             if (waitingFor == code && waitForAddress != null && waitForAddress.SequenceEqual(address.addressNoChecksum))
                                             {
