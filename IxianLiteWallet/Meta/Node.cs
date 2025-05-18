@@ -220,7 +220,7 @@ namespace LW.Meta
             NetworkClientManager.start(2);
 
             // Start the stream client manager
-            StreamClientManager.start();
+            StreamClientManager.start(Config.maxConnectedStreamingNodes);
 
             // Start TIV
             if (generatedNewWallet || !File.Exists(Config.walletFile))

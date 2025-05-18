@@ -87,7 +87,7 @@ namespace LW.Network
                                     endpoint.helloReceived = true;
                                     NetworkClientManager.recalculateLocalTimeDifference();
 
-                                    if (endpoint.presenceAddress.type == 'R')
+                                    if (node_type == 'R')
                                     {
                                         string[] connected_servers = StreamClientManager.getConnectedClients(true);
                                         if (connected_servers.Count() == 1 || !connected_servers.Contains(StreamClientManager.primaryS2Address))
@@ -102,7 +102,8 @@ namespace LW.Network
                                         }
                                     }
 
-                                    if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                                    if (node_type == 'M'
+                                        || node_type == 'H')
                                     {
                                         // Get random presences
                                         endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'R' });

@@ -22,6 +22,7 @@ namespace LW.Meta
         public static int maxRelaySectorNodesToRequest = 6;
         public static int maxRelaySectorNodesToConnectTo = 3;
 
+        public static int maxConnectedStreamingNodes = 6;
         private static string outputHelp()
         {
             Program.noStart = true;
@@ -67,7 +68,7 @@ namespace LW.Meta
                 switch (networkType)
                 {
                     case NetworkType.main:
-                        CoreNetworkUtils.seedNodes = new List<string[]>
+                        NetworkUtils.seedNodes = new List<string[]>
                             {
                                 new string[2] { seedNode, null }
                             };
@@ -75,7 +76,7 @@ namespace LW.Meta
 
                     case NetworkType.test:
                     case NetworkType.reg:
-                        CoreNetworkUtils.seedTestNetNodes = new List<string[]>
+                        NetworkUtils.seedTestNetNodes = new List<string[]>
                             {
                                 new string[2] { seedNode, null }
                             };
