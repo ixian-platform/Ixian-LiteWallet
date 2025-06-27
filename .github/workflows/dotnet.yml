@@ -32,9 +32,11 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Restore dependencies
+      working-directory: Ixian-LiteWallet/IxianLiteWallet
       run: dotnet restore
 
     - name: Building Ixian-LiteWallet
+      working-directory: Ixian-LiteWallet/IxianLiteWallet
       run: dotnet build
 
     #- name: Running Unit Tests
