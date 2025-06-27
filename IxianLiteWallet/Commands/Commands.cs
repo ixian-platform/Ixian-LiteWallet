@@ -77,6 +77,10 @@ namespace IxianLiteWallet
                     handleSend(line);
                     break;
 
+                case "sendP2p":
+                    handleSendP2p(line);
+                    break;
+
                 case "sendfrom":
                     handleSendFrom(line);
                     break;
@@ -87,6 +91,10 @@ namespace IxianLiteWallet
 
                 case "stress":
                     handleStress(line);
+                    break;
+
+                case "debug":
+                    handleDebug(line);
                     break;
             }
         }
@@ -106,8 +114,9 @@ namespace IxianLiteWallet
             Console.WriteLine("\tchangepass\t\t-changes this wallet's password");
             //Console.WriteLine("\tverify [txid]\t\t-verifies the specified transaction txid");
             Console.WriteLine("\tsend [address] [amount]\t-sends IxiCash to the specified address");
+            Console.WriteLine("\tsendP2p [address] [amount]\t-sends IxiCash to the specified address");
             Console.WriteLine("\tsendfrom [fromaddress] [toaddress] [amount] -sends IxiCash from a specific address to the specified address");
-            // change password
+            //Console.WriteLine("\tdebug [verbosity]\t\t-enables logging to console");
             Console.WriteLine("");
         }
 
@@ -118,14 +127,14 @@ namespace IxianLiteWallet
             IxiNumber total_balance = 0;
             foreach (Address addr in address_list)
             {
-                Node.getBalance(addr.addressWithChecksum);
+                Node.getBalance(addr.addressNoChecksum);
 
                 IxiNumber address_balance = 0;
                 string verified = "";
 
-                foreach (Balance balance in Node.balances)
+                foreach (Balance balance in IxianHandler.balances)
                 {
-                    if (balance.address != null && balance.address.addressWithChecksum.SequenceEqual(addr.addressWithChecksum))
+                    if (balance.address != null && balance.address.addressNoChecksum.SequenceEqual(addr.addressNoChecksum))
                     {
                         address_balance = balance.balance;
 
@@ -214,6 +223,32 @@ namespace IxianLiteWallet
         }
 
         void handleSend(string line)
+        {
+            string[] split = line.Split(new string[] { " " }, StringSplitOptions.None);
+            if (split.Count() < 3)
+            {
+                Console.WriteLine("Incorrect parameters for send. Should be address and amount.\n");
+                return;
+            }
+            string address = split[1];
+            // Validate the address first
+            byte[] _address = Base58Check.Base58CheckEncoding.DecodePlain(address);
+            if (Address.validateChecksum(_address) == false)
+            {
+                Console.WriteLine("Invalid address checksum!. Please make sure you typed the address correctly.\n");
+                return;
+            }
+            // Make sure the amount is positive
+            IxiNumber amount = new IxiNumber(split[2]);
+            if (amount < (long)0)
+            {
+                Console.WriteLine("Please type a positive amount.\n");
+                return;
+            }
+            Node.sendTransaction(new Address(_address), amount);
+        }
+
+        void handleSendP2p(string line)
         {
             string[] split = line.Split(new string[] { " " }, StringSplitOptions.None);
             if (split.Count() < 3)
@@ -373,8 +408,14 @@ namespace IxianLiteWallet
                    int spam_counter = 0;
                    for (int i = 0; i < stressTxCount; i++)
                    {
-                       Transaction transaction = new Transaction((int)Transaction.Type.Normal, amount, fee, to, from, null, pubKey, IxianHandler.getHighestKnownNetworkBlockHeight());
-                       IxianHandler.addTransaction(transaction, true);
+                       List<Address> relayNodeAddresses = NetworkClientManager.getRandomConnectedClientAddresses(1);
+                       Dictionary<Address, Transaction.ToEntry> toList = new()
+                       {
+                           { to, new Transaction.ToEntry(Transaction.getExpectedVersion(IxianHandler.getLastBlockVersion()), amount) },
+                           { relayNodeAddresses.First(), new Transaction.ToEntry(Transaction.getExpectedVersion(IxianHandler.getLastBlockVersion()), fee) }
+                       };
+                       Transaction transaction = new Transaction((int)Transaction.Type.Normal, fee, toList, from, pubKey, IxianHandler.getHighestKnownNetworkBlockHeight());
+                       IxianHandler.addTransaction(transaction, relayNodeAddresses, true);
 
                        spam_counter++;
                        if (spam_counter >= stressTargetTps)
@@ -396,6 +437,28 @@ namespace IxianLiteWallet
                }
                stressRunning = false;
            }).Start();
+        }
+
+        void handleDebug(string line)
+        {
+            string[] split = line.Split(new string[] { " " }, StringSplitOptions.None);
+            if (split.Count() < 2)
+            {
+                Console.WriteLine("Incorrect parameters for verify. Should be at least the verbosity.\n");
+                return;
+            }
+
+            int verbosity = int.Parse(split[1]);
+            if (verbosity == 0)
+            {
+                Logging.verbosity = verbosity;
+                Logging.consoleOutput = false;
+            }
+            else
+            {
+                Logging.verbosity = verbosity;
+                Logging.consoleOutput = true;
+            }
         }
     }
 }
