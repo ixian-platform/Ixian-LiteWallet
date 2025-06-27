@@ -7,7 +7,7 @@ namespace LW.Meta
 {
     internal class LWTransactionInclusionCallbacks : TransactionInclusionCallbacks
     {
-        public void receivedTransactionInclusionVerificationResponse(byte[] txid, bool verified)
+        public void receivedTIVResponse(byte[] txid, bool verified)
         {
             string status = "NOT VERIFIED";
             if (verified)

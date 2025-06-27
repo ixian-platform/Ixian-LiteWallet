@@ -4,6 +4,7 @@ using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Network.Messages;
+using IXICore.Streaming;
 using IXICore.Utils;
 using LW.Meta;
 using System;
@@ -100,15 +101,6 @@ namespace LW.Network
                                             PresenceList.forceSendKeepAlive = true;
                                             Logging.info("Forcing KA from networkprotocol");
                                         }
-                                    }
-
-                                    if (node_type == 'M'
-                                        || node_type == 'H')
-                                    {
-                                        // Get random presences
-                                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'R' });
-
-                                        CoreProtocolMessage.subscribeToEvents(endpoint);
                                     }
                                 }
                             }
@@ -366,14 +358,14 @@ namespace LW.Network
                 Rejected rej = new Rejected(data);
                 switch (rej.code)
                 {
-                    case RejectedCode.TxInvalid:
-                    case RejectedCode.TxInsufficientFee:
-                    case RejectedCode.TxDust:
+                    case RejectedCode.TransactionInvalid:
+                    case RejectedCode.TransactionInsufficientFee:
+                    case RejectedCode.TransactionDust:
                         Logging.error("Transaction {0} was rejected with code: {1}", Crypto.hashToString(rej.data), rej.code);
                         Console.WriteLine("Transaction {0} was rejected with code: {1}", Crypto.hashToString(rej.data), rej.code);
                         break;
 
-                    case RejectedCode.TxDuplicate:
+                    case RejectedCode.TransactionDuplicate:
                         Logging.warn("Transaction {0} already sent.", Crypto.hashToString(rej.data), rej.code);
                         // All good
                         PendingTransactions.increaseReceivedCount(rej.data, endpoint.serverWalletAddress);

@@ -53,7 +53,7 @@ namespace LW.Meta
             PeerStorage.init("");
 
             // Init TIV
-            tiv = new TransactionInclusion(new LWTransactionInclusionCallbacks());
+            tiv = new TransactionInclusion(new LWTransactionInclusionCallbacks(), false);
 
             mainLoopThread = new Thread(mainLoop);
             mainLoopThread.Name = "Main_Loop_Thread";
@@ -67,16 +67,7 @@ namespace LW.Meta
             {
                 try
                 {
-                    using (MemoryStream mw = new MemoryStream())
-                    {
-                        using (BinaryWriter writer = new BinaryWriter(mw))
-                        {
-                            writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
-                            writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
-                            writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
-                            NetworkClientManager.broadcastData(['M', 'H', 'R'], ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
-                        }
-                    }
+                    CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest);
                 }
                 catch (Exception e)
                 {

@@ -37,6 +37,7 @@ namespace LW.Meta
             Console.WriteLine("    -t\t\t\t\t Starts node in testnet mode");
             Console.WriteLine("    -n\t\t\t\t Specify which seed node to use");
             Console.WriteLine("    --checksumLock\t\t Sets the checksum lock for seeding checksums - useful for custom networks.");
+            Console.WriteLine("    --networkType\t\t mainnet, testnet or regtest.");
 
             return "";
         }
@@ -48,6 +49,29 @@ namespace LW.Meta
 
             return "";
         }
+
+        private static NetworkType parseNetworkTypeValue(string value)
+        {
+            NetworkType netType;
+            value = value.ToLower();
+            switch (value)
+            {
+                case "mainnet":
+                    netType = NetworkType.main;
+                    break;
+                case "testnet":
+                    netType = NetworkType.test;
+                    break;
+                case "regtest":
+                    netType = NetworkType.reg;
+                    break;
+                default:
+                    throw new Exception(string.Format("Unknown network type '{0}'. Possible values are 'mainnet', 'testnet', 'regtest'", value));
+            }
+            return netType;
+        }
+
+
         public static void init(string[] args)
         {
             string seedNode = "";
@@ -58,6 +82,7 @@ namespace LW.Meta
             cmd_parser.Setup<bool>('v', "version").Callback(text => outputVersion());
             cmd_parser.Setup<string>('w', "wallet").Callback(value => walletFile = value).Required();
             cmd_parser.Setup<bool>('t', "testnet").Callback(value => networkType = NetworkType.test).Required();
+            cmd_parser.Setup<string>("networkType").Callback(value => networkType = parseNetworkTypeValue(value)).Required();
             cmd_parser.Setup<string>('n', "node").Callback(value => seedNode = value).Required();
             cmd_parser.Setup<string>("checksumLock").Callback(value => checksumLock = Encoding.UTF8.GetBytes(value)).Required();
 
