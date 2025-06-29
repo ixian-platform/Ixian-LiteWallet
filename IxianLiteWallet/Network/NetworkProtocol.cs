@@ -127,6 +127,14 @@ namespace LW.Network
                                             }
                                         }
                                     }
+
+
+                                    if (node_type == 'M'
+                                        || node_type == 'H'
+                                        || node_type == 'R')
+                                    {
+                                        CoreProtocolMessage.subscribeToEvents(endpoint);
+                                    }
                                 }
                             }
                         }
@@ -181,16 +189,14 @@ namespace LW.Network
 
                                     // Retrieve the blockheight for the balance
                                     ulong block_height = reader.ReadIxiVarUInt();
+                                    byte[] block_checksum = reader.ReadBytes((int)reader.ReadIxiVarUInt());
 
                                     foreach (Balance balance in IxianHandler.balances)
                                     {
                                         if (address.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
                                         {
-
-
                                             if (block_height > balance.blockHeight && (balance.balance != ixi_balance || balance.blockHeight == 0))
                                             {
-                                                byte[] block_checksum = reader.ReadBytes((int)reader.ReadIxiVarUInt());
 
                                                 balance.address = address;
                                                 balance.balance = ixi_balance;

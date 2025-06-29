@@ -67,7 +67,7 @@ namespace LW.Meta
             {
                 try
                 {
-                    CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest);
+                    CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, CoreConfig.maxRelaySectorNodesToRequest);
                 }
                 catch (Exception e)
                 {
@@ -76,6 +76,7 @@ namespace LW.Meta
                 Thread.Sleep(30000);
             }
         }
+
         private bool initWallet()
         {
             WalletStorage walletStorage = new WalletStorage(Config.walletFile);
