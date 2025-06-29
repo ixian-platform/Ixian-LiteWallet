@@ -455,7 +455,7 @@ namespace LW.Meta
                         entry.addedTimestamp = cur_time;
                     }
 
-                    if (entry.confirmedNodeList.Count() > 1) // already received 3+ feedback
+                    if (entry.confirmedNodeList.Count() >= 2) // already received 2+ feedback
                     {
                         continue;
                     }

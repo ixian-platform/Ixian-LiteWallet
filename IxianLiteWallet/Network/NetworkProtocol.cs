@@ -84,6 +84,17 @@ namespace LW.Network
 
                                     int block_version = (int)reader.ReadIxiVarUInt();
 
+                                    // TODO TODO TODO remove node_type != 'R' once highest known network block height is enforced in PL
+                                    if (node_type != 'C' && node_type != 'R')
+                                    {
+                                        ulong highest_block_height = IxianHandler.getHighestKnownNetworkBlockHeight();
+                                        if (last_block_num + 10 < highest_block_height)
+                                        {
+                                            CoreProtocolMessage.sendBye(endpoint, ProtocolByeCode.tooFarBehind, string.Format("Your node is too far behind, your block height is {0}, highest network block height is {1}.", last_block_num, highest_block_height), highest_block_height.ToString(), true);
+                                            return;
+                                        }
+                                    }
+
                                     // Process the hello data
                                     endpoint.helloReceived = true;
                                     NetworkClientManager.recalculateLocalTimeDifference();
@@ -101,6 +112,52 @@ namespace LW.Network
                                             PresenceList.forceSendKeepAlive = true;
                                             Logging.info("Forcing KA from networkprotocol");
                                         }
+                                        else
+                                        {
+                                            // Announce local presence
+                                            var myPresence = PresenceList.curNodePresence;
+                                            if (myPresence != null)
+                                            {
+                                                foreach (var pa in myPresence.addresses)
+                                                {
+                                                    byte[] hash = CryptoManager.lib.sha3_512sqTrunc(pa.getBytes());
+                                                    var iika = new InventoryItemKeepAlive(hash, pa.lastSeenTime, myPresence.wallet, pa.device);
+                                                    endpoint.addInventoryItem(iika);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+
+
+                    case ProtocolMessageCode.getPresence2:
+                        {
+                            using (MemoryStream m = new MemoryStream(data))
+                            {
+                                using (BinaryReader reader = new BinaryReader(m))
+                                {
+                                    int walletLen = (int)reader.ReadIxiVarUInt();
+                                    Address wallet = new Address(reader.ReadBytes(walletLen));
+
+                                    Presence p = PresenceList.getPresenceByAddress(wallet);
+                                    if (p != null)
+                                    {
+                                        lock (p)
+                                        {
+                                            byte[][] presence_chunks = p.getByteChunks();
+                                            foreach (byte[] presence_chunk in presence_chunks)
+                                            {
+                                                endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk, null);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // TODO blacklisting point
+                                        Logging.warn(string.Format("Node has requested presence information about {0} that is not in our PL.", wallet.ToString()));
                                     }
                                 }
                             }
@@ -163,6 +220,27 @@ namespace LW.Network
                         handleKeepAlivePresence(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.compactBlockHeaders1:
+                        {
+                            using (MemoryStream m = new MemoryStream(data))
+                            {
+                                using (BinaryReader reader = new BinaryReader(m))
+                                {
+                                    ulong from = reader.ReadIxiVarUInt();
+                                    ulong totalCount = reader.ReadIxiVarUInt();
+
+                                    int filterLen = (int)reader.ReadIxiVarUInt();
+                                    byte[] filterBytes = reader.ReadBytes(filterLen);
+
+                                    byte[] headersBytes = new byte[reader.BaseStream.Length - reader.BaseStream.Position];
+                                    Array.Copy(data, reader.BaseStream.Position, headersBytes, 0, headersBytes.Length);
+
+                                    Node.tiv.receivedBlockHeaders3(headersBytes, endpoint);
+                                }
+                            }
+                        }
+                        break;
+
                     case ProtocolMessageCode.blockHeaders3:
                         {
                             // Forward the block headers to the TIV handler
@@ -202,6 +280,10 @@ namespace LW.Network
 
                     case ProtocolMessageCode.rejected:
                         handleRejected(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.getKeepAlives:
+                        CoreProtocolMessage.processGetKeepAlives(data, endpoint);
                         break;
 
                     default:
@@ -331,22 +413,23 @@ namespace LW.Network
                 }
             }
 
-            if (IxianHandler.isMyAddress(new Address(prefix)))
+            List<Peer> peers = new();
+            var relays = RelaySectors.Instance.getSectorNodes(prefix, CoreConfig.maxRelaySectorNodesToRequest);
+            foreach (var relay in relays)
             {
-                List<Peer> peers = new();
-                var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToRequest);
-                foreach (var relay in relays)
+                var p = PresenceList.getPresenceByAddress(relay);
+                if (p == null)
                 {
-                    var p = PresenceList.getPresenceByAddress(relay);
-                    if (p == null)
-                    {
-                        continue;
-                    }
-                    var pa = p.addresses.First();
-                    peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
-
-                    PeerStorage.addPeerToPeerList(pa.address, p.wallet, pa.lastSeenTime, 0, 0, 0);
+                    continue;
                 }
+                var pa = p.addresses.First();
+                peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
+
+                PeerStorage.addPeerToPeerList(pa.address, p.wallet, pa.lastSeenTime, 0, 0, 0);
+            }
+
+            if (IxianHandler.primaryWalletAddress.sectorPrefix.SequenceEqual(prefix))
+            {
                 Node.networkClientManagerStatic.setClientsToConnectTo(peers);
             }
         }
@@ -363,6 +446,7 @@ namespace LW.Network
                     case RejectedCode.TransactionDust:
                         Logging.error("Transaction {0} was rejected with code: {1}", Crypto.hashToString(rej.data), rej.code);
                         Console.WriteLine("Transaction {0} was rejected with code: {1}", Crypto.hashToString(rej.data), rej.code);
+                        PendingTransactions.remove(rej.data);
                         break;
 
                     case RejectedCode.TransactionDuplicate:
