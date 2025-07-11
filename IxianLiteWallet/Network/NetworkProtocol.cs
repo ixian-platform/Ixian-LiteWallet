@@ -4,7 +4,6 @@ using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Network.Messages;
-using IXICore.Streaming;
 using IXICore.Utils;
 using LW.Meta;
 using System;

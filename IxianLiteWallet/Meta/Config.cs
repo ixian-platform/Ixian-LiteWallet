@@ -13,13 +13,12 @@ namespace LW.Meta
         public static string walletFile = "ixian.wal";
         public static bool onlyShowAddresses = false;
 
-        public static readonly string version = "xlwc-0.9.4-dev"; // LiteWallet version
+        public static readonly string version = "xlwc-0.9.4"; // LiteWallet version
 
         public static NetworkType networkType = NetworkType.main;
 
         public static byte[] checksumLock = null;
 
-        public static int maxRelaySectorNodesToRequest = 6;
         public static int maxRelaySectorNodesToConnectTo = 3;
 
         public static int maxConnectedStreamingNodes = 6;
