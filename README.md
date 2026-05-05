@@ -1,3 +1,10 @@
+***
+
+# Ixian Lite Wallet has been deprecated and will not be updated. Please use QuIXI as a replacement:
+* [QuIXI](https://github.com/ixian-platform/QuIXI): Quick integration toolkit for Ixian. Connects apps, IoT devices, AI Agents, and services to the Ixian Platform via REST APIs and message queues (MQTT/RabbitMQ). Provides developers with a simple bridge into secure Ixian communication and Client Discovery.
+
+***
+
 # Ixian Lite Wallet
 Ixian Lite Wallet is a lightweight console executable which allows using an Ixian wallet without running a full Ixian-DLT Node.
 
